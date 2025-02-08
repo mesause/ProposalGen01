@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Document Generated</title>
+  </head>
+  <body>
+    <h1>Document Generated Successfully</h1>
+    <p>Your document has been generated.</p>
+    <p><a href="{{ url_for('download', filename=output_filename) }}">Click here to download {{ output_filename }}</a></p>
+    <p><a href="{{ url_for('index') }}">Generate another document</a></p>
+  </body>
+</html>

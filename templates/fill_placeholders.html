@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Fill in Placeholder Values</title>
+  </head>
+  <body>
+    <h1>Fill in Placeholder Values for {{ template_file.split('/')[-1] }}</h1>
+    <form method="POST" action="{{ url_for('generate_document') }}">
+      <!-- Pass along the chosen template file -->
+      <input type="hidden" name="template_file" value="{{ template_file }}">
+      <table>
+        {% for ph in placeholders %}
+          <tr>
+            <td><label for="{{ ph | replace(' ', '_') }}">{{ ph }}:</label></td>
+            <td>
+              <!-- Use the sanitized version as the form field name -->
+              <input type="text" name="{{ ph | replace(' ', '_') }}" id="{{ ph | replace(' ', '_') }}" required>
+            </td>
+          </tr>
+        {% endfor %}
+      </table>
+      <button type="submit">Generate Document</button>
+    </form>
+  </body>
+</html>

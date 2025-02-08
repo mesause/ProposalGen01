@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Document Generator - Select Template</title>
+  </head>
+  <body>
+    <h1>Select a Template</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul style="color: red;">
+          {% for message in messages %}
+            <li>{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+    <form method="POST" action="{{ url_for('select_template') }}">
+      <label for="template_file">Choose a template:</label>
+      <select name="template_file" id="template_file">
+        {% for file in template_files %}
+          <option value="{{ file }}">{{ file.split('/')[-1] }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Next</button>
+    </form>
+  </body>
+</html>
