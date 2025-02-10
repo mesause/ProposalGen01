@@ -1,10 +1,10 @@
 <!doctype html>
 <html>
   <head>
-    <title>Document Generator - Select Template</title>
+    <title>Document Generator - Home</title>
   </head>
   <body>
-    <h1>Select a Template</h1>
+    <h1>Document Generator</h1>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         <ul style="color: red;">
@@ -14,6 +14,8 @@
         </ul>
       {% endif %}
     {% endwith %}
+
+    <h2>Select a Template</h2>
     <form method="POST" action="{{ url_for('select_template') }}">
       <label for="template_file">Choose a template:</label>
       <select name="template_file" id="template_file">
@@ -23,5 +25,25 @@
       </select>
       <button type="submit">Next</button>
     </form>
+
+    <h2>Available Salespersons</h2>
+    {% if salespeople %}
+      <table border="1" cellpadding="5" cellspacing="0">
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+        </tr>
+        {% for sp in salespeople %}
+          <tr>
+            <td>{{ sp.Name }}</td>
+            <td>{{ sp.Email }}</td>
+            <td>{{ sp.Phone }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <p>No salespersons available.</p>
+    {% endif %}
   </body>
 </html>

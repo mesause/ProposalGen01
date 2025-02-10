@@ -8,17 +8,28 @@
     <form method="POST" action="{{ url_for('generate_document') }}">
       <!-- Pass along the chosen template file -->
       <input type="hidden" name="template_file" value="{{ template_file }}">
+      
+      <h2>Enter Template Data</h2>
       <table>
         {% for ph in placeholders %}
           <tr>
             <td><label for="{{ ph | replace(' ', '_') }}">{{ ph }}:</label></td>
             <td>
-              <!-- Use the sanitized version as the form field name -->
               <input type="text" name="{{ ph | replace(' ', '_') }}" id="{{ ph | replace(' ', '_') }}" required>
             </td>
           </tr>
         {% endfor %}
       </table>
+      
+      <h2>Select a Salesperson</h2>
+      <label for="salesperson">Salesperson:</label>
+      <select name="salesperson" id="salesperson" required>
+        {% for sp in salespeople %}
+          <option value="{{ sp.Name }}">{{ sp.Name }}</option>
+        {% endfor %}
+      </select>
+      
+      <br><br>
       <button type="submit">Generate Document</button>
     </form>
   </body>

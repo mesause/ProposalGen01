@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
-Flask Web Application for Document Generation
+Flask Web Application for Document Generation with Salesperson Management
 
-This app lets users select a DOCX template (excluding any sanitized copies),
-fill in the placeholder values via a web form, and then generates a new DOCX
-document (with the filename automatically built from the values of "Client Company Name"
-and "Proposal date"). All sanitized templates are stored in the "sanitized_templates"
-folder, and generated documents in the "output" folder.
+Features:
+  - Lists available DOCX templates (excluding any sanitized copies).
+  - Displays a table of salespersons from an XLSX file (salespersons.xlsx).
+  - After selecting a template, presents a form to fill in template placeholders
+    (excluding Salesperson_Name, Salesperson_Email, Salesperson_Phone) and a dropdown
+    to choose a salesperson.
+  - Automatically injects the chosen salesperson's details into the document context.
+  - Generates the final DOCX file with a filename based on "Client Company Name" and "Proposal date".
  
 Dependencies:
   - Python 3.9+
   - Flask
   - docxtpl
-  - docx2pdf (if you choose to implement PDF conversion; see notes below)
+  - openpyxl
+  - (Optional) docx2pdf for PDF conversion
 """
 
 import os
@@ -24,31 +28,56 @@ import tempfile
 import shutil
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, flash
 from docxtpl import DocxTemplate
-# from docx2pdf import convert  # Uncomment if PDF conversion is set up on your Linux server
+# from docx2pdf import convert  # Uncomment if PDF conversion is desired and supported on your server
+from openpyxl import Workbook, load_workbook
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # required for flash messages
+app.secret_key = "supersecretkey"  # Required for flash messages
 
-# Define directories (all relative to the location of app.py)
+# Directories and files
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-# For our purposes the original templates are in BASE_DIR (or you can change this to a dedicated folder)
-ORIGINAL_TEMPLATES_DIR = BASE_DIR  
+ORIGINAL_TEMPLATES_DIR = BASE_DIR  # Adjust if original templates are stored elsewhere
 SANITIZED_DIR = os.path.join(BASE_DIR, "sanitized_templates")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+SALESPEOPLE_FILE = os.path.join(BASE_DIR, "salespersons.xlsx")
 
-# Ensure the necessary folders exist.
+# Ensure required folders exist.
 os.makedirs(SANITIZED_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # --------------------
-# Utility Functions
+# Salesperson XLSX Utilities
+# --------------------
+
+def init_salespeople_file():
+    """Create salespersons.xlsx with headers if it does not exist."""
+    if not os.path.exists(SALESPEOPLE_FILE):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["Name", "Email", "Phone"])
+        wb.save(SALESPEOPLE_FILE)
+
+def get_salespeople():
+    """Return a list of salespersons as dictionaries from salespersons.xlsx."""
+    init_salespeople_file()
+    wb = load_workbook(SALESPEOPLE_FILE)
+    ws = wb.active
+    salespeople = []
+    # Skip header row (first row)
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row and any(row):
+            sp = {"Name": row[0] or "", "Email": row[1] or "", "Phone": row[2] or ""}
+            salespeople.append(sp)
+    return salespeople
+
+# --------------------
+# Document Generation Utilities
 # --------------------
 
 def extract_placeholders_from_xml(docx_path):
     """
-    Extract placeholders from the document.xml inside the DOCX file.
-    Uses a regex (with DOTALL) to find all text between {{ and }},
-    strips out any embedded XML tags, and returns a list of unique placeholder strings.
+    Extract placeholders from the document.xml inside the DOCX.
+    Returns a list of unique placeholder strings.
     """
     try:
         with zipfile.ZipFile(docx_path, "r") as z:
@@ -66,8 +95,7 @@ def extract_placeholders_from_xml(docx_path):
 
 def sanitize_placeholder(placeholder):
     """
-    Convert a placeholder (which may contain spaces or punctuation)
-    to a valid Python identifier by replacing non-alphanumeric characters with underscores.
+    Convert a placeholder to a valid Python identifier by replacing non-alphanumeric characters with underscores.
     """
     sanitized = re.sub(r'\W+', '_', placeholder)
     return sanitized.strip('_')
@@ -77,7 +105,8 @@ def sanitize_template_xml(template_path, mapping, sanitized_dir):
     Create a sanitized version of the DOCX template.
     For each placeholder in the DOCX that, when cleaned, matches one of the keys in mapping,
     replace it with the corresponding sanitized version.
-    The new DOCX is stored in the sanitized_dir.
+    The new DOCX is stored in sanitized_dir.
+    Returns the path to the new sanitized template.
     """
     os.makedirs(sanitized_dir, exist_ok=True)
     temp_dir = tempfile.mkdtemp()
@@ -118,10 +147,7 @@ def sanitize_template_xml(template_path, mapping, sanitized_dir):
     return sanitized_template_path
 
 def get_value_case_insensitive(dictionary, target_key, default):
-    """
-    Retrieve a value from a dictionary using case-insensitive key matching.
-    Returns the value if found and nonempty; otherwise, returns the default.
-    """
+    """Retrieve a value from a dictionary using case-insensitive key matching."""
     for key, value in dictionary.items():
         if key.strip().lower() == target_key.strip().lower():
             return value.strip() if value.strip() else default
@@ -133,15 +159,22 @@ def get_value_case_insensitive(dictionary, target_key, default):
 
 @app.route('/')
 def index():
-    """Home page: list available original DOCX templates."""
-    # List only original templates (exclude any file whose basename starts with "sanitized_")
+    """Home page: List available original templates and display the salesperson table."""
+    # List only original templates (exclude any starting with "sanitized_")
     template_files = [f for f in glob.glob(os.path.join(ORIGINAL_TEMPLATES_DIR, "*Template*.docx"))
                       if not os.path.basename(f).startswith("sanitized_")]
-    return render_template("index.html", template_files=template_files)
+    salespeople = get_salespeople()
+    return render_template("index.html",
+                           template_files=template_files,
+                           salespeople=salespeople)
 
 @app.route('/select_template', methods=["POST"])
 def select_template():
-    """After selecting a template, extract its placeholders and show a form to fill them."""
+    """
+    After selecting a template, extract its placeholders and show a form to fill them.
+    Exclude placeholders for Salesperson details (they will be auto-filled).
+    Also include a dropdown to choose a salesperson.
+    """
     template_file = request.form.get("template_file")
     if not template_file:
         flash("No template selected.")
@@ -151,37 +184,49 @@ def select_template():
         flash("No placeholders found in the selected template.")
         return redirect(url_for("index"))
     placeholders.sort()
-    # Pass the template_file and placeholders list to the next page.
+    # Filter out salesperson placeholders from the manual entry list.
+    filtered_placeholders = [ph for ph in placeholders
+                             if ph not in ["Salesperson_Name", "Salesperson_Email", "Salesperson_Phone"]]
+    salespeople = get_salespeople()
     return render_template("fill_placeholders.html",
                            template_file=template_file,
-                           placeholders=placeholders)
+                           placeholders=filtered_placeholders,
+                           salespeople=salespeople)
 
 @app.route('/generate_document', methods=["POST"])
 def generate_document():
-    """Process the form data, generate the document, and provide a download link."""
+    """
+    Process form data, generate the document, and provide a download link.
+    The chosen salesperson’s details are automatically injected into the context.
+    """
     template_file = request.form.get("template_file")
     if not template_file:
         flash("Template file missing.")
         return redirect(url_for("index"))
-    # Re-extract placeholders (in case the template changed)
-    placeholders = extract_placeholders_from_xml(template_file)
-    if not placeholders:
-        flash("No placeholders found in the template.")
-        return redirect(url_for("index"))
-    placeholders.sort()
+    # Re-extract the placeholders from the template (if needed)
+    all_placeholders = extract_placeholders_from_xml(template_file)
+    all_placeholders.sort()
     mapping = {}
     raw_values = {}
     context = {}
-    # For each placeholder, retrieve the user-supplied value.
-    # We assume that the form field names equal the sanitized placeholder,
-    # i.e. by replacing non-alphanumeric characters with underscores.
-    for ph in placeholders:
+    # Process only non-salesperson placeholders from the form.
+    for ph in all_placeholders:
+        if ph in ["Salesperson_Name", "Salesperson_Email", "Salesperson_Phone"]:
+            continue  # Skip these—will be auto-filled.
         key = sanitize_placeholder(ph)
         mapping[ph] = key
         value = request.form.get(key)
         raw_values[ph] = value
         context[key] = value
-
+    # Get the selected salesperson from the dropdown.
+    selected_salesperson = request.form.get("salesperson")
+    if selected_salesperson:
+        salespeople = get_salespeople()
+        sp = next((s for s in salespeople if s["Name"].strip().lower() == selected_salesperson.strip().lower()), None)
+        if sp:
+            context["Salesperson_Name"] = sp["Name"]
+            context["Salesperson_Email"] = sp["Email"]
+            context["Salesperson_Phone"] = sp["Phone"]
     # Create a sanitized version of the template.
     sanitized_template_path = sanitize_template_xml(template_file, mapping, SANITIZED_DIR)
     if not sanitized_template_path:
@@ -193,7 +238,7 @@ def generate_document():
     except Exception as e:
         flash("Error rendering the document.")
         return redirect(url_for("index"))
-    # Build the output filename using the raw values for "Client Company Name" and "Proposal date"
+    # Build output filename using raw values for "Client Company Name" and "Proposal date"
     client_name = get_value_case_insensitive(raw_values, "Client Company Name", "UnknownClient")
     proposal_date = get_value_case_insensitive(raw_values, "Proposal date", "UnknownDate")
     filename_base = f"Proposal_{client_name}_{proposal_date}"
@@ -204,7 +249,6 @@ def generate_document():
     except Exception as e:
         flash("Error saving the generated document.")
         return redirect(url_for("index"))
-    # (Optional: PDF conversion can be added here if desired.)
     return render_template("result.html", output_filename=output_filename)
 
 @app.route('/download/<filename>')
@@ -216,5 +260,4 @@ def download(filename):
 # Run the App
 # --------------------
 if __name__ == '__main__':
-    # Set debug=True for development; remove or set False for production.
     app.run(debug=True)
