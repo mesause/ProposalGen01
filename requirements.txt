@@ -2,3 +2,4 @@ flask
 docxtpl
 gunicorn
 docx2pdf
+openpyxl
